@@ -14,6 +14,7 @@ def create_connection():
         password=os.getenv("DB_PASSWORD"),
     )
 
+
 def create_tables():
     conn = create_connection()
     cursor = conn.cursor()
@@ -52,6 +53,30 @@ def create_tables():
     conn.commit()
     conn.close()
 
+
+def add_user(username, hashed_password, role="customer"):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, %s)",
+        (username, hashed_password, role),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user(username):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, username, hashed_password, role FROM users WHERE username = %s",
+        (username,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+
 if __name__ == "__main__":
     create_tables()
     conn = create_connection()
@@ -62,3 +87,8 @@ if __name__ == "__main__":
     )
     print(cursor.fetchall())
     conn.close()
+
+if __name__ == "__main__":
+    create_tables()
+    add_user("testuster", "fakehash")
+    print(get_user("testuster"))
