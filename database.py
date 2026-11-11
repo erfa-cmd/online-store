@@ -77,6 +77,55 @@ def get_user(username):
     return row
 
 
+def set_user_role(username, role):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET role = %s WHERE username = %s",
+        (role, username),
+    )
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return updated
+
+def add_product(name, description, price, stock):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO products (name, description, price, stock) "
+        "VALUES (%s, %s, %s, %s) RETURNING id",
+        (name, description, price, stock),
+    )
+    product_id = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+    return product_id
+
+
+def get_all_products():
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, name, description, price, stock FROM products ORDER BY id"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def get_product(product_id):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, name, description, price, stock FROM products WHERE id = %s",
+        (product_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+
 if __name__ == "__main__":
     create_tables()
     conn = create_connection()
