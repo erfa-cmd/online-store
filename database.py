@@ -1,6 +1,7 @@
 import os
 import psycopg2
 from dotenv import load_dotenv
+from decimal import Decimal
 
 load_dotenv()
 
@@ -89,6 +90,7 @@ def set_user_role(username, role):
     conn.close()
     return updated
 
+
 def add_product(name, description, price, stock):
     conn = create_connection()
     cursor = conn.cursor()
@@ -124,6 +126,86 @@ def get_product(product_id):
     row = cursor.fetchone()
     conn.close()
     return row
+
+
+class OrderError(Exception):
+    pass
+
+
+def create_order(user_id, item):
+    wanted = {}
+    for item in items:
+        pid = item["product_id"]
+        wanted[pid] = wanted.get(pid, 0) + item["quantity"]
+
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        total = Decimal("0")
+        lines = []
+
+        for product_id in sorted(wanted):
+            quantity = wanted[product_id]
+            cursor.execute(
+                "SELECT price, stock FROM  products WHERE id = %s FOR UPDATE",
+                (product_id)
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise OrderError(f"Product {product_id} not found")
+            price, stock = row
+            if stock < quantity:
+                raise OrderError(f"Not enough stock for product {product_id}")
+            total += price * quantity
+            lines.append((product_id, quantity, price))
+
+        cursor.execute(
+            "INSERT INTO orders (user_id, total_price) VALUES (%s, %s) RETURNING id",
+            (user_id, total),
+        )
+        order_id = cursor.fetchone()[0]
+
+        for product_id, quantity, price in lines:
+            cursor.execute(
+                "INSERT INTO order_items (order_id, product_id, quatity, unit_price)"
+                "VALUES (%s, %s, %s, %s)",
+                (order_id, product_id, quantity, price),
+            )
+            cursor.execute(
+                "UPDATE products SET stock = stock - %s WHERE id = %s",
+                (quantity, product_id),
+            )
+        conn.commit()
+        return order_id
+    except Exception:
+        conn.rollback
+        raise
+    finally:
+        conn.close
+
+
+def update_product(product_id, name, description, price, stock):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE products SET name = %s, description = %s, price = %s, stock = %s "
+        "WHERE id = %s",
+        (name, description, price, stock, product_id),
+    )
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def delete_product(product_id):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM products WHERE id = %s", (product_id,))
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted
 
 
 if __name__ == "__main__":

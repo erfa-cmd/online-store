@@ -12,11 +12,15 @@ from auth import (
     verify_password,
 )
 from database import (
+    OrderError,
     add_product,
     add_user,
+    create_order,
+    delete_product,
     get_all_products,
     get_product,
     get_user,
+    update_product,
 )
 
 app = FastAPI(title="Online Store API")
@@ -32,6 +36,15 @@ class ProductCreate(BaseModel):
     description: str | None = None
     price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     stock: int = Field(default=0, ge=0)
+
+
+class OrderItemIn(BaseModel):
+    product_id: int
+    quantity: int = Field(gt=0)
+
+
+class OrderCreate(BaseModel):
+    items: list[OrderItemIn] = Field(min_length=1)
 
 
 def product_to_dict(row):
@@ -61,7 +74,8 @@ def register(user: UserCreate):
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     row = get_user(form_data.username)
     if row is None or not verify_password(form_data.password, row[2]):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(
+            status_code=401, detail="Invalid username or password")
     return {"access_token": create_access_token(row[1]), "token_type": "bearer"}
 
 
@@ -90,3 +104,34 @@ def create_product(product: ProductCreate, admin: dict = Depends(require_admin))
     )
     return {"id": product_id, "message": "Product created"}
 
+
+@app.put("/products/{product_id}")
+def edit_product(
+    product_id: int,
+    product: ProductCreate,
+    admin: dict = Depends(require_admin),
+):
+    updated = update_product(
+        product_id, product.name, product.description, product.price, product.stock
+    )
+    if updated == 0:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"message": "Product updated"}
+
+
+@app.delete("/products/{product_id}")
+def remove_product(product_id: int, admin: dict = Depends(require_admin)):
+    deleted = delete_product(product_id)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"message": "Product deleted"}
+
+
+@app.post("/orders", status_code=201)
+def place_order(order: OrderCreate, current_user: dict = Depends(get_current_user)):
+    items = [item.model_dump() for item in order.items]
+    try:
+        order_id = create_order(current_user["id"], items)
+    except OrderError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return {"order_id": order_id, "message": "Order created"}
